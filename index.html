@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>랜덤 돌림판</title>
+<style>
+  :root { --size: 420px; }
+  body {
+    text-align: center;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 Roboto, "Noto Sans KR", sans-serif;
+    background:#f7f7f7;
+  }
+  h2 { margin-top: 24px; }
+  .stage {
+    position: relative;
+    display: inline-block;
+    margin-top: 24px;
+    width: var(--size);
+    height: var(--size);
+  }
+  #wheel {
+    width: var(--size);
+    height: var(--size);
+    transition: transform 4s cubic-bezier(.15,.8,.25,1);
+    display: block;
+  }
+  svg.pointer {
+    position:absolute;
+    inset:0;
+    width:var(--size);
+    height:var(--size);
+    pointer-events:none;
+  }
+  .controls { margin-top: 14px; }
+  button {
+    padding: 12px 24px;
+    font-size: 16px;
+    border: 0;
+    border-radius: 10px;
+    background: #16a34a;
+    color: #fff;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(22,163,74,.3);
+  }
+  button:hover { filter: brightness(1.05); }
+  button:disabled {
+    background: #9ca3af;
+    box-shadow: none;
+  }
+  .label {
+    margin-top: 8px;
+    color:#374151;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+  <h2>🎯 랜덤 돌림판</h2>
+
+  <div class="stage">
+    <canvas id="wheel" width="420" height="420"></canvas>
+
+    <svg class="pointer" viewBox="0 0 420 420">
+      <polygon fill="#e11d48" stroke="rgba(0,0,0,.25)" stroke-width="1"
+        points="210,150 200,210 220,210" />
+    </svg>
+  </div>
+
+  <div class="controls">
+    <button id="spinBtn">돌리기</button>
+    <div class="label">
+      중앙에서 위를 가리키는 화살표(12시)가 <b>당첨</b>입니다.<br>
+      이 기기·브라우저에서는 <b>1번만</b> 참여할 수 있어요.
+    </div>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('wheel');
+  const ctx = canvas.getContext('2d');
+  const size = canvas.width;
+  const R = size/2 - 10;
+  const center = size/2;
+
+  const spinBtn = document.getElementById('spinBtn');
+  const PLAY_KEY = "wheelPlayed_v3";
+
+  const prizes = [
+    { name: '참가상',          weight: 47.2, color: '#264653' },
+    { name: '핸드크림(30ml)',  weight: 34.8, color: '#e9c46a' },
+    { name: '색연필',          weight: 9,    color: '#2a9d8f' },
+    { name: '핸드크림(100ml)', weight: 9,    color: '#e76f51' }
+  ];
+  const total = prizes.reduce((s,p)=>s+p.weight,0);
+
+  const sectors = [];
+  let acc = 0;
+  for (const p of prizes) {
+    const angle = (p.weight/total) * 360;
+    const start = acc;
+    const end = acc + angle;
+    const mid = start + angle/2;
+    sectors.push({ ...p, start, end, mid });
+    acc = end;
+  }
+
+  function drawWheel(baseDeg = 0) {
+    ctx.clearRect(0,0,size,size);
+    let startDeg = 0;
+    for (const s of sectors) {
+      const slice = s.end - s.start;
+
+      ctx.beginPath();
+      ctx.moveTo(center, center);
+      ctx.arc(
+        center, center, R,
+        (startDeg + baseDeg) * Math.PI/180,
+        (startDeg + slice + baseDeg) * Math.PI/180
+      );
+      ctx.closePath();
+      ctx.fillStyle = s.color;
+      ctx.fill();
+
+      ctx.strokeStyle = '#2f3b3f';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.save();
+      ctx.translate(center, center);
+      const midDeg = startDeg + slice/2 + baseDeg;
+      ctx.rotate(midDeg * Math.PI/180);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 16px system-ui, sans-serif';
+      ctx.fillText(s.name, R - 12, 6);
+      ctx.restore();
+      startDeg += slice;
+    }
+  }
+  drawWheel(0);
+
+  function pickPrize() {
+    const r = Math.random() * total;
+    let cum = 0;
+    for (const s of sectors) {
+      cum += s.weight;
+      if (r <= cum) return s;
+    }
+    return sectors[sectors.length - 1];
+  }
+
+  function disableSpin() {
+    spinBtn.disabled = true;
+    spinBtn.textContent = "이미 참여하였습니다";
+    spinBtn.style.opacity = "0.8";
+    spinBtn.style.cursor = "default";
+  }
+
+  if (localStorage.getItem(PLAY_KEY) === "1") disableSpin();
+
+  let spinning = false;
+  spinBtn.addEventListener('click', () => {
+    if (spinning) return;
+    if (localStorage.getItem(PLAY_KEY) === "1") {
+      alert("이미 한 번 참여하였습니다.");
+      return;
+    }
+
+    spinning = true;
+    const win = pickPrize();
+    const k = Math.floor(Math.random()*3) + 4;
+    const targetDeg = k*360 + (270 - win.mid);
+    canvas.style.transform = `rotate(${targetDeg}deg)`;
+
+    setTimeout(() => {
+      const ok = confirm(`결과: ${win.name} 당첨! 🎉\n\n확인을 누르면 다시 참여할 수 없습니다.`);
+      if (ok) {
+        localStorage.setItem(PLAY_KEY, "1");
+        disableSpin();
+      }
+      spinning = false;
+    }, 4050);
+  });
+})();
+</script>
+</body>
+</html>
